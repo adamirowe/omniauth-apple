@@ -12,7 +12,8 @@ module OmniAuth
              authorize_url: '/auth/authorize',
              token_url: '/auth/token'
       option :authorize_params,
-             response_mode: 'form_post'
+             response_mode: 'form_post',
+             response_type: 'id_token'
 
       uid { id_info['sub'] }
 
