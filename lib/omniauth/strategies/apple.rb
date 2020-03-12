@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require 'net/http'
 require 'omniauth-oauth2'
 
 module OmniAuth
@@ -42,10 +43,18 @@ module OmniAuth
 
       private
 
+      def jwk_set
+        @jwk_set = JSON::JWK::Set.new(
+          JSON.parse(
+            result = Net::HTTP.get(URI.parse('https://appleid.apple.com/auth/keys'))
+          )
+        )
+      end
+
       def id_info
         id_token = request.params['id_token'] || access_token.params['id_token']
         log(:info, "id_token: #{id_token}")
-        @id_info ||= ::JWT.decode(id_token, nil, false)[0] # payload after decoding
+        @id_info ||= JSON::JWT.decode @access_token, jwk_set # payload after decoding
       end
 
       def user_info
