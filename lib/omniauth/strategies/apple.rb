@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require 'net/http'
 require 'omniauth-oauth2'
 require 'net/https'
 
@@ -16,6 +17,7 @@ module OmniAuth
              response_mode: 'form_post',
              scope: 'email name'
       option :authorized_client_ids, []
+             response_type: 'id_token'
 
       uid { id_info['sub'] }
 
@@ -44,6 +46,10 @@ module OmniAuth
 
       def callback_url
         options[:redirect_uri] || (full_host + script_name + callback_path)
+      end
+
+      def request_phase
+        redirect client.auth_code.authorize_url({:redirect_uri => callback_url}.merge(authorize_params)).gsub(/\+/, '%20')
       end
 
       private
@@ -95,6 +101,20 @@ module OmniAuth
                          id_info['aud'] if options.authorized_client_ids.include? id_info['aud']
                        end
       end
+      
+      def jwk_set
+        @jwk_set = JSON::JWK::Set.new(
+          JSON.parse(
+            result = Net::HTTP.get(URI.parse('https://appleid.apple.com/auth/keys'))
+          )
+        )
+      end
+
+      def id_info
+        id_token = request.params['id_token'] || access_token.params['id_token']
+        log(:info, "id_token: #{id_token}")
+        @id_info ||= JSON::JWT.decode @access_token, jwk_set # payload after decoding
+      end
 
       def user_info
         user = request.params['user']
@@ -124,15 +144,15 @@ module OmniAuth
 
       def client_secret
         payload = {
+          kid: options.key_id,
           iss: options.team_id,
           aud: 'https://appleid.apple.com',
           sub: client_id,
           iat: Time.now.to_i,
           exp: Time.now.to_i + 60
         }
-        headers = { kid: options.key_id }
 
-        ::JWT.encode(payload, private_key, 'ES256', headers)
+        JSON::JWT.new(payload).sign(private_key, :ES256)
       end
 
       def private_key
